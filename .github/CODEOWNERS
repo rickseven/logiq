@@ -1,0 +1,4 @@
+# File ini menentukan siapa yang bertanggung jawab atas bagian kode tertentu.
+# Kode di bawah ini menyatakan bahwa @rickseven adalah pemilik seluruh file di repo ini.
+
+*       @rickseven

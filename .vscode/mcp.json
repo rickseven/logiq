@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "logiq": {
+      "command": "logiq",
+      "args": ["mcp"]
+    }
+  }
+}

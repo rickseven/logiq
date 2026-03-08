@@ -1,0 +1,53 @@
+name: Release Build
+
+on:
+  release:
+    types: [created]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Menentukan OS dan Arsitektur CPU yang didukung
+        goos: [linux, windows, darwin]
+        goarch: [amd64, arm64]
+        exclude:
+          - goos: windows
+            goarch: arm64 # Windows ARM tidak terlalu umum, kita kecualikan agar build lebih cepat
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: false
+
+      - name: Build Binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          mkdir -p build
+          BINARY_NAME=logiq-${{ matrix.goos }}-${{ matrix.goarch }}
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            BINARY_NAME=${BINARY_NAME}.exe
+          fi
+
+          # Ambil nama tag rilis dari GitHub environment
+          VERSION=${GITHUB_REF#refs/tags/}
+
+          # Build aplikasi utama dengan menyuntikkan versi (centralized in domain package)
+          go build -ldflags="-X github.com/rickseven/logiq/internal/domain.Version=${VERSION}" -o build/$BINARY_NAME ./cmd/logiq
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: build/*

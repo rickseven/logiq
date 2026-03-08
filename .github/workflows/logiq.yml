@@ -1,0 +1,30 @@
+name: LogIQ CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.22"
+          cache: false
+
+      - name: Build LogIQ
+        run: go build -o logiq_bin ./cmd/logiq
+
+      - name: Run Tests Structurally inside LogIQ
+        run: |
+          ./logiq_bin run go test ./...
+
+      - name: Run CI
+        run: go test -v ./...
