@@ -40,7 +40,10 @@ func (r *DefaultRunner) Run(ctx context.Context, cmdName string, args []string) 
 	metrics := &domain.ResourceMetrics{}
 
 	if stdruntime.GOOS == "windows" {
-		if looksLikePowerShellCmdlet(cmdName) && hasPowerShellInstalled() {
+		if strings.EqualFold(cmdName, "cmd") || strings.EqualFold(cmdName, "cmd.exe") {
+			// Avoid wrapping cmd inside another cmd /C because it can alter /c payload parsing.
+			cmd = exec.CommandContext(ctx, "cmd", args...)
+		} else if looksLikePowerShellCmdlet(cmdName) && hasPowerShellInstalled() {
 			fullCommand := buildPowerShellCommand(cmdName, args)
 			cmd = exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", fullCommand)
 		} else {

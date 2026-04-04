@@ -93,3 +93,34 @@ func TestBuildPowerShellCommand(t *testing.T) {
 		t.Fatalf("buildPowerShellCommand() = %q, want %q", got, want)
 	}
 }
+
+func TestRunnerWindowsCmdWithSpacedCommand(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("windows-only test")
+	}
+
+	runner := NewRunner()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	stream, exitChan, _, err := runner.Run(ctx, "cmd", []string{"/c", "echo hello"})
+	if err != nil {
+		t.Fatalf("failed to run: %v", err)
+	}
+
+	found := false
+	for line := range stream {
+		if strings.Contains(strings.ToLower(line), "hello") {
+			found = true
+		}
+	}
+
+	exitCode := <-exitChan
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d", exitCode)
+	}
+
+	if !found {
+		t.Fatalf("did not find expected output 'hello'")
+	}
+}

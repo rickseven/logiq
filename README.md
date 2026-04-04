@@ -94,6 +94,8 @@ cd logiq
 go build -o logiq.exe ./cmd/logiq
 ```
 
+For a Windows release-style local build (matching the release workflow output naming and version injection), see [Windows Release-style Build Script](README.md#windows-release-style-build-script).
+
 ---
 
 ## Quick Start
@@ -207,6 +209,31 @@ We encourage open-source contributions!
 
 - **`go build ./...`**: Compiles LogIQ entirely locally validating type safety layers.
 - **`go test ./...`**: Runs isolated application tests covering the compression logic natively.
+
+### Windows Release-style Build Script
+
+To mirror the behavior of `.github/workflows/release.yml` for Windows locally, use the PowerShell script below.
+
+- Script path: `scripts/build-release-windows.ps1`
+- Output binary: `build/logiq-windows-amd64.exe`
+
+Build with default version:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-release-windows.ps1
+```
+
+Build with custom version (recommended to match your release tag):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-release-windows.ps1 -Version v1.0.2
+```
+
+Verify the built binary version:
+
+```powershell
+.\build\logiq-windows-amd64.exe version
+```
 
 ### Adding a new Parser
 
