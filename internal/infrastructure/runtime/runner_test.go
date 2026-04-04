@@ -62,3 +62,34 @@ func TestSanitizeUTF8(t *testing.T) {
 		}
 	}
 }
+
+func TestLooksLikePowerShellCmdlet(t *testing.T) {
+	tests := []struct {
+		name     string
+		cmd      string
+		expected bool
+	}{
+		{name: "valid cmdlet", cmd: "Get-ChildItem", expected: true},
+		{name: "valid mixed case", cmd: "Set-Location", expected: true},
+		{name: "plain executable", cmd: "npm", expected: false},
+		{name: "path executable", cmd: "C:/tools/git.exe", expected: false},
+		{name: "incomplete cmdlet", cmd: "Get-", expected: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := looksLikePowerShellCmdlet(tc.cmd)
+			if got != tc.expected {
+				t.Fatalf("looksLikePowerShellCmdlet(%q) = %v, want %v", tc.cmd, got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestBuildPowerShellCommand(t *testing.T) {
+	got := buildPowerShellCommand("Get-ChildItem", []string{"C:/Program Files", "|", "Select-Object", "Name"})
+	want := "Get-ChildItem 'C:/Program Files' | Select-Object Name"
+	if got != want {
+		t.Fatalf("buildPowerShellCommand() = %q, want %q", got, want)
+	}
+}

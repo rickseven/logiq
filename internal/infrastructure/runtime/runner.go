@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"os/exec"
+	"regexp"
 	stdruntime "runtime"
 	"strings"
 	"sync"
@@ -28,6 +29,8 @@ type Runner interface {
 
 type DefaultRunner struct{}
 
+var powershellCmdletPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*-[A-Za-z][A-Za-z0-9]*$`)
+
 func NewRunner() Runner {
 	return &DefaultRunner{}
 }
@@ -37,14 +40,13 @@ func (r *DefaultRunner) Run(ctx context.Context, cmdName string, args []string) 
 	metrics := &domain.ResourceMetrics{}
 
 	if stdruntime.GOOS == "windows" {
-		var sb strings.Builder
-		sb.WriteString(quoteArg(cmdName))
-		for _, arg := range args {
-			sb.WriteString(" ")
-			sb.WriteString(quoteArg(arg))
+		if looksLikePowerShellCmdlet(cmdName) && hasPowerShellInstalled() {
+			fullCommand := buildPowerShellCommand(cmdName, args)
+			cmd = exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", fullCommand)
+		} else {
+			fullCommand := buildCmdCommand(cmdName, args)
+			cmd = exec.CommandContext(ctx, "cmd", "/C", fullCommand)
 		}
-		fullCommand := sb.String()
-		cmd = exec.CommandContext(ctx, "cmd", "/C", fullCommand)
 	} else {
 		cmd = exec.CommandContext(ctx, cmdName, args...)
 	}
@@ -141,6 +143,35 @@ func (r *DefaultRunner) Run(ctx context.Context, cmdName string, args []string) 
 	return outChan, exitChan, metrics, nil
 }
 
+func hasPowerShellInstalled() bool {
+	_, err := exec.LookPath("powershell")
+	return err == nil
+}
+
+func looksLikePowerShellCmdlet(cmdName string) bool {
+	return powershellCmdletPattern.MatchString(cmdName)
+}
+
+func buildCmdCommand(cmdName string, args []string) string {
+	var sb strings.Builder
+	sb.WriteString(quoteArg(cmdName))
+	for _, arg := range args {
+		sb.WriteString(" ")
+		sb.WriteString(quoteArg(arg))
+	}
+	return sb.String()
+}
+
+func buildPowerShellCommand(cmdName string, args []string) string {
+	var sb strings.Builder
+	sb.WriteString(quotePowerShellArg(cmdName))
+	for _, arg := range args {
+		sb.WriteString(" ")
+		sb.WriteString(quotePowerShellArg(arg))
+	}
+	return sb.String()
+}
+
 func quoteArg(arg string) string {
 	// Shell operators should not be quoted
 	operators := map[string]bool{"&&": true, "||": true, ";": true, "|": true, ">": true, ">>": true, "<": true}
@@ -155,4 +186,17 @@ func quoteArg(arg string) string {
 
 	// Clean double quotes for cmd.exe
 	return "\"" + strings.ReplaceAll(arg, "\"", "\"\"") + "\""
+}
+
+func quotePowerShellArg(arg string) string {
+	operators := map[string]bool{"&&": true, "||": true, ";": true, "|": true, ">": true, ">>": true, "<": true}
+	if operators[arg] {
+		return arg
+	}
+
+	if !strings.ContainsAny(arg, " \t\n\r&|;<>^(){}[]$`\"'") {
+		return arg
+	}
+
+	return "'" + strings.ReplaceAll(arg, "'", "''") + "'"
 }

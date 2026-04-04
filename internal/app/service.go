@@ -2,6 +2,7 @@
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
@@ -132,6 +133,10 @@ func (s *Service) ExecuteCommand(ctx context.Context, cmd string, args []string,
 	if exitCode != 0 || summary.Status == "failure" {
 		if exitCode != 0 {
 			metrics.IncCommandFailures()
+			trimmedSummary := strings.TrimSpace(summary.SummaryText)
+			if trimmedSummary == "" || !strings.HasPrefix(trimmedSummary, "✗") {
+				summary.SummaryText = "✗ Execution failed (exit code " + strconv.Itoa(exitCode) + ")"
+			}
 		}
 		summary.Status = "failure"
 
