@@ -1,8 +1,8 @@
 {
   "servers": {
     "logiq": {
-      "command": "logiq",
-      "args": ["mcp"]
+      "command": "go",
+      "args": ["run", ".\\cmd\\logiq\\main.go", "mcp"]
     }
   }
 }

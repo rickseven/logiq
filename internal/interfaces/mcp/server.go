@@ -80,14 +80,11 @@ func (s *Server) handleRunCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parts := strings.Fields(req.Command)
-	if len(parts) == 0 {
+	cmd, args := parseCommandForExecution(req.Command)
+	if cmd == "" {
 		http.Error(w, "Empty command", http.StatusBadRequest)
 		return
 	}
-
-	cmd := parts[0]
-	args := parts[1:]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()

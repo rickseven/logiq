@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os/exec"
+	"regexp"
+	stdruntime "runtime"
 	"strings"
 	"time"
 
@@ -11,6 +14,55 @@ import (
 	"github.com/rickseven/logiq/internal/domain"
 	"github.com/rickseven/logiq/internal/infrastructure/runtime"
 )
+
+var shellControlPattern = regexp.MustCompile(`[\n\r;|><]|&&|\|\|`)
+var psCmdletPattern = regexp.MustCompile(`(?i)\b[A-Za-z][A-Za-z0-9]*-[A-Za-z][A-Za-z0-9]*\b`)
+var psSyntaxPattern = regexp.MustCompile(`(?i)\$env:|\$\{|\$\(|@\{|@\(|\$_\.|\s-(?:eq|ne|gt|lt|ge|le|like|notlike|match|notmatch|contains|in|notin|and|or|not)\s`)
+
+func shouldRunAsRawShell(command string) bool {
+	return shellControlPattern.MatchString(command)
+}
+
+func looksLikePowerShellCommand(command string) bool {
+	if psCmdletPattern.MatchString(command) {
+		return true
+	}
+	if psSyntaxPattern.MatchString(command) {
+		return true
+	}
+	return false
+}
+
+func resolvePowerShellExe() string {
+	if _, err := exec.LookPath("pwsh"); err == nil {
+		return "pwsh"
+	}
+	return "powershell"
+}
+
+// parseCommandForExecution preserves complex shell syntax on Windows by routing
+// raw command text to the matching shell. For simple commands it keeps argv split
+// to preserve parser detection quality in the app pipeline.
+func parseCommandForExecution(command string) (string, []string) {
+	trimmed := strings.TrimSpace(command)
+	if trimmed == "" {
+		return "", nil
+	}
+
+	if stdruntime.GOOS == "windows" && shouldRunAsRawShell(trimmed) {
+		if looksLikePowerShellCommand(trimmed) {
+			psExe := resolvePowerShellExe()
+			return psExe, []string{"-NoProfile", "-NonInteractive", "-Command", trimmed}
+		}
+		return "cmd", []string{"/C", trimmed}
+	}
+
+	parts := strings.Fields(trimmed)
+	if len(parts) == 0 {
+		return "", nil
+	}
+	return parts[0], parts[1:]
+}
 
 func getAppService() *app.Service {
 	// Reusable binding abstraction explicitly matching CLI bindings
@@ -29,14 +81,11 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	parts := strings.Fields(req.Command)
-	if len(parts) == 0 {
+	cmd, args := parseCommandForExecution(req.Command)
+	if cmd == "" {
 		http.Error(w, "Empty command", http.StatusBadRequest)
 		return
 	}
-
-	cmd := parts[0]
-	args := parts[1:]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()

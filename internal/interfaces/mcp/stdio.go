@@ -189,8 +189,8 @@ func (s *StdioServer) handleRequest(req JSONRPCRequest) {
 }
 
 func (s *StdioServer) runCommandTool(id interface{}, cmdLine string) {
-	parts := strings.Fields(cmdLine)
-	if len(parts) == 0 {
+	cmd, args := parseCommandForExecution(cmdLine)
+	if cmd == "" {
 		s.sendToolResult(id, "Error: empty command", true)
 		return
 	}
@@ -199,7 +199,7 @@ func (s *StdioServer) runCommandTool(id interface{}, cmdLine string) {
 	defer cancel()
 
 	appSvc := getAppService()
-	out, err := appSvc.ExecuteCommand(ctx, parts[0], parts[1:], false)
+	out, err := appSvc.ExecuteCommand(ctx, cmd, args, false)
 
 	if err != nil {
 		s.sendToolResult(id, fmt.Sprintf("Error: %v", err), true)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	stdruntime "runtime"
 	"strings"
 	"testing"
 )
@@ -93,5 +94,48 @@ func TestJSONEncoding(t *testing.T) {
 	body := rr2.Body.String()
 	if !strings.Contains(body, "<>&") {
 		t.Errorf("Expected symbols to be unescaped, got %q", body)
+	}
+}
+
+func TestParseCommandForExecution(t *testing.T) {
+	t.Run("simple command keeps argv split", func(t *testing.T) {
+		cmd, args := parseCommandForExecution("go test ./...")
+		if cmd != "go" {
+			t.Fatalf("expected cmd=go, got %q", cmd)
+		}
+		if len(args) != 2 || args[0] != "test" || args[1] != "./..." {
+			t.Fatalf("unexpected args: %#v", args)
+		}
+	})
+
+	if stdruntime.GOOS == "windows" {
+		t.Run("complex powershell command routed to powershell", func(t *testing.T) {
+			raw := `cd C:\Users\Eric\Projects\almathurat; Select-String -Pattern "^version:" -Path pubspec.yaml`
+			cmd, args := parseCommandForExecution(raw)
+
+			if cmd != "powershell" && cmd != "pwsh" {
+				t.Fatalf("expected powershell wrapper, got cmd=%q args=%#v", cmd, args)
+			}
+			if len(args) != 4 {
+				t.Fatalf("expected 4 wrapper args, got %#v", args)
+			}
+			if args[0] != "-NoProfile" || args[1] != "-NonInteractive" || args[2] != "-Command" {
+				t.Fatalf("unexpected wrapper args: %#v", args)
+			}
+			if args[3] != raw {
+				t.Fatalf("raw command changed during parse: %q", args[3])
+			}
+		})
+
+		t.Run("complex cmd command routed to cmd /C", func(t *testing.T) {
+			raw := `cd /d C:\Users\Eric\Projects\almathurat && findstr /R "^version:" pubspec.yaml`
+			cmd, args := parseCommandForExecution(raw)
+			if cmd != "cmd" {
+				t.Fatalf("expected cmd wrapper, got cmd=%q args=%#v", cmd, args)
+			}
+			if len(args) != 2 || args[0] != "/C" || args[1] != raw {
+				t.Fatalf("unexpected cmd wrapper args: %#v", args)
+			}
+		})
 	}
 }
