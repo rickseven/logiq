@@ -226,7 +226,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-release-windows.ps1
 Build with custom version (recommended to match your release tag):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\build-release-windows.ps1 -Version v1.0.2
+powershell -ExecutionPolicy Bypass -File .\scripts\build-release-windows.ps1 -Version vX.Y.Z
 ```
 
 Verify the built binary version:

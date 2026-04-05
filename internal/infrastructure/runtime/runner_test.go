@@ -124,3 +124,172 @@ func TestRunnerWindowsCmdWithSpacedCommand(t *testing.T) {
 		t.Fatalf("did not find expected output 'hello'")
 	}
 }
+
+func TestContainsPowerShellSyntax(t *testing.T) {
+	tests := []struct {
+		name     string
+		cmdName  string
+		args     []string
+		expected bool
+	}{
+		{
+			name:     "Select-String in args",
+			cmdName:  "cd",
+			args:     []string{`C:\Projects\app;`, "Select-String", "-Pattern", `"^version:"`, "-Path", "pubspec.yaml"},
+			expected: true,
+		},
+		{
+			name:     "Get-Content in args",
+			cmdName:  "cd",
+			args:     []string{`C:\Projects\app;`, "Get-Content", "file.txt"},
+			expected: true,
+		},
+		{
+			name:     "$env: variable syntax",
+			cmdName:  "echo",
+			args:     []string{"$env:PATH"},
+			expected: true,
+		},
+		{
+			name:     "ForEach-Object pipeline",
+			cmdName:  "dir",
+			args:     []string{"|", "ForEach-Object", "{", "$_.Name", "}"},
+			expected: true,
+		},
+		{
+			name:     "plain cmd command",
+			cmdName:  "dir",
+			args:     []string{`C:\Projects`},
+			expected: false,
+		},
+		{
+			name:     "findstr is cmd-native",
+			cmdName:  "findstr",
+			args:     []string{"/R", `"^version:"`, "pubspec.yaml"},
+			expected: false,
+		},
+		{
+			name:     "echo is cross-shell",
+			cmdName:  "echo",
+			args:     []string{"hello", "world"},
+			expected: false,
+		},
+		{
+			name:     "flutter is cross-shell",
+			cmdName:  "flutter",
+			args:     []string{"build", "apk"},
+			expected: false,
+		},
+		{
+			name:     "Test-Path in args",
+			cmdName:  "cd",
+			args:     []string{`C:\app`, "&&", "Test-Path", "build"},
+			expected: true,
+		},
+		{
+			name:     "PS comparison operator -eq",
+			cmdName:  "if",
+			args:     []string{"($x", "-eq", "5)", "{", "echo", "yes", "}"},
+			expected: true,
+		},
+		{
+			name:     "Where-Object in pipeline",
+			cmdName:  "Get-Process",
+			args:     []string{"|", "Where-Object", "{", "$_.CPU", "-gt", "10", "}"},
+			expected: true,
+		},
+		{
+			name:     "Invoke-WebRequest (not in old hardcoded list test)",
+			cmdName:  "echo",
+			args:     []string{";", "Invoke-WebRequest", "https://example.com"},
+			expected: true,
+		},
+		{
+			name:     "Uncommon cmdlet Compress-Archive",
+			cmdName:  "Compress-Archive",
+			args:     []string{"-Path", "src", "-DestinationPath", "out.zip"},
+			expected: true,
+		},
+		{
+			name:     "Uncommon cmdlet Expand-Archive",
+			cmdName:  "cmd",
+			args:     []string{";", "Expand-Archive", "-Path", "file.zip"},
+			expected: true,
+		},
+		{
+			name:     "Enable-WindowsOptionalFeature",
+			cmdName:  "Enable-WindowsOptionalFeature",
+			args:     []string{"-Online", "-FeatureName", "Microsoft-Hyper-V"},
+			expected: true,
+		},
+		{
+			name:     "PS type cast [System.IO]::ReadAllText",
+			cmdName:  "echo",
+			args:     []string{"[System.IO.File]::ReadAllText('file.txt')"},
+			expected: true,
+		},
+		{
+			name:     "PS hashtable @{} literal",
+			cmdName:  "echo",
+			args:     []string{"@{Key='Value'}"},
+			expected: true,
+		},
+		{
+			name:     "PS subexpression $()",
+			cmdName:  "echo",
+			args:     []string{"$(Get-Date)"},
+			expected: true,
+		},
+		{
+			name:     "PS $_ pipeline variable",
+			cmdName:  "ls",
+			args:     []string{"|", "ForEach", "{", "$_.FullName", "}"},
+			expected: true,
+		},
+		{
+			name:     "PS -match operator",
+			cmdName:  "echo",
+			args:     []string{"'hello'", "-match", "'he.*'"},
+			expected: true,
+		},
+		{
+			name:     "PS variable ${complex}",
+			cmdName:  "echo",
+			args:     []string{"${my-var}"},
+			expected: true,
+		},
+		{
+			name:     "git is cross-shell",
+			cmdName:  "git",
+			args:     []string{"status", "--short"},
+			expected: false,
+		},
+		{
+			name:     "npm run is cross-shell",
+			cmdName:  "npm",
+			args:     []string{"run", "build"},
+			expected: false,
+		},
+		{
+			name:     "python is cross-shell",
+			cmdName:  "python",
+			args:     []string{"-m", "pytest"},
+			expected: false,
+		},
+		{
+			name:     "dart is cross-shell",
+			cmdName:  "dart",
+			args:     []string{"analyze"},
+			expected: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := containsPowerShellSyntax(tc.cmdName, tc.args)
+			if got != tc.expected {
+				t.Errorf("containsPowerShellSyntax(%q, %v) = %v, want %v", tc.cmdName, tc.args, got, tc.expected)
+			}
+		})
+	}
+}

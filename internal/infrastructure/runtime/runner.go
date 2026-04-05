@@ -31,6 +31,42 @@ type DefaultRunner struct{}
 
 var powershellCmdletPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*-[A-Za-z][A-Za-z0-9]*$`)
 
+// powershellCmdletInTextPattern matches PowerShell Verb-Noun cmdlet patterns
+// anywhere in a command string (e.g. Select-String, Get-ChildItem, Invoke-WebRequest).
+// This covers ALL PowerShell cmdlets without needing a hardcoded list.
+// Standard PS approved verbs: Get, Set, New, Remove, Add, Clear, Close, Copy, Enter,
+// Exit, Find, Format, Hide, Import, Export, Install, Invoke, Join, Lock, Measure,
+// Move, Open, Out, Pop, Push, Redo, Register, Rename, Repair, Request, Reset,
+// Resize, Resolve, Restart, Restore, Resume, Save, Search, Select, Send, Show,
+// Skip, Split, Start, Step, Stop, Submit, Suspend, Switch, Sync, Test, Trace,
+// Undo, Uninstall, Unlock, Unprotect, Unregister, Update, Wait, Watch, Write, etc.
+var powershellCmdletInTextPattern = regexp.MustCompile(
+	`(?i)\b(Get|Set|New|Remove|Add|Clear|Close|Copy|Enter|Exit|Find|Format|Hide|` +
+		`Import|Export|Install|Invoke|Join|Lock|Measure|Move|Open|Out|Pop|Push|Redo|` +
+		`Register|Rename|Repair|Request|Reset|Resize|Resolve|Restart|Restore|Resume|` +
+		`Save|Search|Select|Send|Show|Skip|Split|Start|Step|Stop|Submit|Suspend|` +
+		`Switch|Sync|Test|Trace|Undo|Uninstall|Unlock|Unprotect|Unregister|Update|` +
+		`Wait|Watch|Write|Compare|Complete|Compress|Confirm|Connect|Convert|ConvertFrom|` +
+		`ConvertTo|Debug|Deny|Disable|Disconnect|Dismount|Edit|Enable|Expand|Grant|` +
+		`Group|Initialize|Limit|Merge|Mount|Optimize|Ping|Protect|Publish|Receive|` +
+		`Revoke|Sort|Unpublish|Use|Where|ForEach)-[A-Z][A-Za-z0-9]+\b`,
+)
+
+// Patterns that indicate PowerShell-specific syntax (variables, operators, sub-expressions, type casts)
+var powershellSyntaxPattern = regexp.MustCompile(
+	`(?i)` +
+		// PS variables and environment
+		`\$env:|\$\{[^}]+\}|\$\([^)]+\)|` +
+		// PS array/hashtable literals
+		`@\(|@\{|` +
+		// PS comparison/logical operators
+		`\s-(?:eq|ne|gt|lt|ge|le|like|notlike|match|notmatch|contains|notcontains|in|notin|is|isnot|as|replace|split|join|band|bor|bxor|bnot|shl|shr|and|or|not|f)\s|` +
+		// PS type cast syntax [Type]::
+		`\[[A-Za-z]+(?:\.[A-Za-z]+)*\]\s*::` +
+		// PS pipeline variable $_
+		`|\$_\.`,
+)
+
 func NewRunner() Runner {
 	return &DefaultRunner{}
 }
@@ -43,9 +79,21 @@ func (r *DefaultRunner) Run(ctx context.Context, cmdName string, args []string) 
 		if strings.EqualFold(cmdName, "cmd") || strings.EqualFold(cmdName, "cmd.exe") {
 			// Avoid wrapping cmd inside another cmd /C because it can alter /c payload parsing.
 			cmd = exec.CommandContext(ctx, "cmd", args...)
+		} else if strings.EqualFold(cmdName, "powershell") || strings.EqualFold(cmdName, "powershell.exe") ||
+			strings.EqualFold(cmdName, "pwsh") || strings.EqualFold(cmdName, "pwsh.exe") {
+			// Explicitly invoked PowerShell — pass args through directly
+			cmd = exec.CommandContext(ctx, cmdName, args...)
 		} else if looksLikePowerShellCmdlet(cmdName) && hasPowerShellInstalled() {
+			psExe := getPowerShellExe()
 			fullCommand := buildPowerShellCommand(cmdName, args)
-			cmd = exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", fullCommand)
+			cmd = exec.CommandContext(ctx, psExe, "-NoProfile", "-NonInteractive", "-Command", fullCommand)
+		} else if containsPowerShellSyntax(cmdName, args) && hasPowerShellInstalled() {
+			// The command contains PowerShell-specific syntax embedded in args
+			// (e.g. "cd C:\path; Select-String ..." or "$env:VAR")
+			// Route through PowerShell instead of cmd.exe
+			psExe := getPowerShellExe()
+			fullCommand := buildPowerShellCommand(cmdName, args)
+			cmd = exec.CommandContext(ctx, psExe, "-NoProfile", "-NonInteractive", "-Command", fullCommand)
 		} else {
 			fullCommand := buildCmdCommand(cmdName, args)
 			cmd = exec.CommandContext(ctx, "cmd", "/C", fullCommand)
@@ -147,12 +195,45 @@ func (r *DefaultRunner) Run(ctx context.Context, cmdName string, args []string) 
 }
 
 func hasPowerShellInstalled() bool {
-	_, err := exec.LookPath("powershell")
+	// Check for PowerShell Core (pwsh) first, then Windows PowerShell (powershell)
+	_, err := exec.LookPath("pwsh")
+	if err == nil {
+		return true
+	}
+	_, err = exec.LookPath("powershell")
 	return err == nil
+}
+
+// getPowerShellExe returns the best available PowerShell executable.
+// Prefers pwsh (PowerShell Core / 7+) over powershell (Windows PowerShell 5.1).
+func getPowerShellExe() string {
+	if _, err := exec.LookPath("pwsh"); err == nil {
+		return "pwsh"
+	}
+	return "powershell"
 }
 
 func looksLikePowerShellCmdlet(cmdName string) bool {
 	return powershellCmdletPattern.MatchString(cmdName)
+}
+
+// containsPowerShellSyntax checks if the full command (name + args) contains
+// PowerShell-specific syntax that cmd.exe cannot execute.
+func containsPowerShellSyntax(cmdName string, args []string) bool {
+	// Build full command string for pattern matching
+	full := cmdName + " " + strings.Join(args, " ")
+
+	// Check for PowerShell Verb-Noun cmdlet pattern anywhere in the command
+	if powershellCmdletInTextPattern.MatchString(full) {
+		return true
+	}
+
+	// Check for PowerShell variable/operator/syntax patterns
+	if powershellSyntaxPattern.MatchString(full) {
+		return true
+	}
+
+	return false
 }
 
 func buildCmdCommand(cmdName string, args []string) string {
