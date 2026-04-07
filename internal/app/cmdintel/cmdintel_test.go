@@ -2,6 +2,7 @@
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -18,6 +19,20 @@ func TestExplainResult(t *testing.T) {
 	resFlutter := GenerateExplainResult([]string{"flutter", "test"})
 	if resFlutter.Tool != "flutter" {
 		t.Errorf("Expected flutter, got %s", resFlutter.Tool)
+	}
+
+	resFlutterBuild := GenerateExplainResult([]string{"flutter", "build", "apk", "--debug", "-v", "--flavor", "dev", "-t", "lib/main_dev.dart"})
+	if resFlutterBuild.Type != "build" {
+		t.Errorf("Expected build type for flutter build, got %s", resFlutterBuild.Type)
+	}
+	if !strings.Contains(strings.ToLower(resFlutterBuild.Description), "apk") {
+		t.Errorf("Expected flutter build description to mention platform apk, got %q", resFlutterBuild.Description)
+	}
+	if !strings.Contains(strings.ToLower(resFlutterBuild.Description), "debug") {
+		t.Errorf("Expected flutter build description to mention debug mode, got %q", resFlutterBuild.Description)
+	}
+	if !strings.Contains(strings.ToLower(resFlutterBuild.Description), "verbose") {
+		t.Errorf("Expected flutter build description to mention verbose logs, got %q", resFlutterBuild.Description)
 	}
 }
 

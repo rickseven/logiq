@@ -147,6 +147,48 @@ _Example Output (Agent JSON Output)_
 
 ---
 
+## Performance Tuning
+
+For very verbose commands (for example `flutter build ... -v`), you can tune LogIQ behavior with environment variables.
+
+| Variable | Default | Purpose |
+| :--- | :--- | :--- |
+| `LOGIQ_MAX_LOG_LINES` | `10000` | Hard cap for processed log lines per execution. Extra lines are omitted to keep memory/latency stable. |
+| `LOGIQ_FAST_MODE` | `false` | Enables fast analysis path for large outputs. |
+| `LOGIQ_FAST_ANALYSIS_LINES` | `2500` | When fast mode is enabled, deep parser/compression/error-intel stages only analyze the last N lines. |
+| `LOGIQ_FAST_AUTO_MODE` | `true` | Automatically enables fast mode when output volume is high. |
+| `LOGIQ_FAST_AUTO_TRIGGER_LINES` | `6000` | Minimum kept log lines before auto fast mode is triggered. |
+| `LOGIQ_MCP_TIMEOUT_SECONDS` | `600` (stdio) / `300` (HTTP) | Overrides MCP tool timeout for long-running tasks. |
+
+### Windows PowerShell Example
+
+```powershell
+$env:LOGIQ_MAX_LOG_LINES = "5000"
+$env:LOGIQ_FAST_AUTO_MODE = "1"
+$env:LOGIQ_FAST_ANALYSIS_LINES = "1500"
+$env:LOGIQ_FAST_AUTO_TRIGGER_LINES = "3000"
+$env:LOGIQ_MCP_TIMEOUT_SECONDS = "1200"
+.\bin\logiq.exe mcp
+```
+
+### Fast Mode Tradeoff
+
+When fast mode is active on large logs, LogIQ prioritizes responsiveness. It can be triggered manually (`LOGIQ_FAST_MODE=1`) or automatically when `LOGIQ_FAST_AUTO_MODE=1` and log volume passes `LOGIQ_FAST_AUTO_TRIGGER_LINES`:
+
+- Full deep error intelligence (root-cause enrichment and suggestions) is skipped.
+- You still get command status, parser summary, key metrics, and compressed context.
+- For full root-cause analysis, disable fast mode (`LOGIQ_FAST_MODE=0`) and rerun.
+
+Fast mode state is also exposed directly in structured output metrics:
+
+- `metrics.fast_mode_active` (boolean)
+- `metrics.fast_mode_kind` (`manual` or `auto`)
+- `metrics.fast_analysis_lines` (current analysis window size)
+- `metrics.fast_mode_trigger_lines` (auto fast-mode threshold used at runtime)
+- `metrics.fast_mode_trigger_reason` (`manual_override` or `auto_threshold`)
+
+---
+
 ## MCP Integration
 
 LogIQ acts as a native **Model Context Protocol (MCP)** server using the **stdio** transport, meaning it communicates via standard input/output. This is the industry-standard way to integrate tools with AI agents.

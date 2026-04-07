@@ -64,5 +64,26 @@ func (p *Parser) Summary() domain.Summary {
 }
 
 func (p *Parser) DetectFromContent(line string) bool {
+	lower := strings.ToLower(strings.TrimSpace(line))
+
+	if strings.HasPrefix(lower, "> task :") {
+		return true
+	}
+
+	patterns := []string{
+		"gradle",
+		"gradlew",
+		"failure: build failed",
+		"build failed in",
+		"execution failed for task",
+		"what went wrong:",
+	}
+
+	for _, ptn := range patterns {
+		if strings.Contains(lower, ptn) {
+			return true
+		}
+	}
+
 	return false
 }

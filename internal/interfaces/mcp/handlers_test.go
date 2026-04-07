@@ -108,6 +108,24 @@ func TestParseCommandForExecution(t *testing.T) {
 		}
 	})
 
+	t.Run("quoted argument stays intact", func(t *testing.T) {
+		raw := `flutter test test/widget_test.dart --plain-name "AppSettings clears last read session state"`
+		cmd, args := parseCommandForExecution(raw)
+
+		if cmd != "flutter" {
+			t.Fatalf("expected cmd=flutter, got %q", cmd)
+		}
+		if len(args) != 4 {
+			t.Fatalf("expected 4 args, got %#v", args)
+		}
+		if args[0] != "test" || args[1] != "test/widget_test.dart" || args[2] != "--plain-name" {
+			t.Fatalf("unexpected leading args: %#v", args)
+		}
+		if args[3] != "AppSettings clears last read session state" {
+			t.Fatalf("quoted arg not preserved, got %q", args[3])
+		}
+	})
+
 	if stdruntime.GOOS == "windows" {
 		t.Run("complex powershell command routed to powershell", func(t *testing.T) {
 			raw := `cd C:\Users\Eric\Projects\almathurat; Select-String -Pattern "^version:" -Path pubspec.yaml`
@@ -135,6 +153,17 @@ func TestParseCommandForExecution(t *testing.T) {
 			}
 			if len(args) != 2 || args[0] != "/C" || args[1] != raw {
 				t.Fatalf("unexpected cmd wrapper args: %#v", args)
+			}
+		})
+
+		t.Run("semicolon native command routed to powershell", func(t *testing.T) {
+			raw := `cd C:\Users\Eric\Projects\almathurat; flutter analyze lib/main.dart`
+			cmd, args := parseCommandForExecution(raw)
+			if cmd != "powershell" && cmd != "pwsh" {
+				t.Fatalf("expected powershell wrapper for semicolon chaining, got cmd=%q args=%#v", cmd, args)
+			}
+			if len(args) != 4 || args[2] != "-Command" || args[3] != raw {
+				t.Fatalf("unexpected powershell wrapper args: %#v", args)
 			}
 		})
 	}

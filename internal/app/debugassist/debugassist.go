@@ -9,6 +9,11 @@ import (
 
 var defaultRules = []domain.SuggestionRule{
 	{
+		Pattern:    regexp.MustCompile(`(?i)command '[^']+' not found|not found.*in path`),
+		ErrorType:  "command_not_found",
+		Suggestion: "Ensure the command is installed and available in PATH. Check the tool's installation guide.",
+	},
+	{
 		Pattern:    regexp.MustCompile(`(?i)module not found|can't resolve`),
 		ErrorType:  "module_resolution",
 		Suggestion: "Check import path or ensure the component exists.",

@@ -34,6 +34,11 @@ func Summarize(compressedLogs []string, duration time.Duration) domain.Summary {
 			if zeroErrorRegex.MatchString(text) || strings.Contains(text, "0 failures") || strings.Contains(text, "0 failed") {
 				continue
 			}
+			// Skip PowerShell error-format metadata lines — these embed "Error" in field names
+			// like "FullyQualifiedErrorId" but are not actual error content lines.
+			if strings.Contains(text, "fullyqualifiederrorid") || strings.Contains(text, "categoryinfo") {
+				continue
+			}
 
 			errors++
 			important = append(important, l)

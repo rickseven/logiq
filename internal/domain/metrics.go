@@ -1,19 +1,24 @@
-﻿package domain
+package domain
 
 // Metrics extracted from the execution
 type Metrics struct {
-	TestsPassed       int     `json:"tests_passed"`
-	TestsFailed       int     `json:"tests_failed"`
-	Warnings          int     `json:"warnings"`
-	Errors            int     `json:"errors"`
-	DurationSeconds   float64 `json:"duration_seconds"`
-	MaxRAMMB          float64 `json:"max_ram_mb,omitempty"`
-	AvgCPUPercent     float64 `json:"avg_cpu_percent,omitempty"`
-	TestFiles         int     `json:"test_files,omitempty"`
-	ModulesCompiled   int     `json:"modules_compiled,omitempty"`
-	BundleSize        string  `json:"bundle_size,omitempty"`
-	ArtifactSize      string  `json:"artifact_size,omitempty"`
-	OriginalBytes     int     `json:"original_bytes,omitempty"`
-	CompressedBytes   int     `json:"compressed_bytes,omitempty"`
-	SavingsPercentage float64 `json:"savings_percentage,omitempty"`
+	TestsPassed           int     `json:"tests_passed"`
+	TestsFailed           int     `json:"tests_failed"`
+	Warnings              int     `json:"warnings"`
+	Errors                int     `json:"errors"`
+	DurationSeconds       float64 `json:"duration_seconds"`
+	FastModeActive        bool    `json:"fast_mode_active"`
+	FastModeKind          string  `json:"fast_mode_kind,omitempty"`
+	FastAnalysisLines     int     `json:"fast_analysis_lines,omitempty"`
+	FastModeTriggerLines  int     `json:"fast_mode_trigger_lines,omitempty"`
+	FastModeTriggerReason string  `json:"fast_mode_trigger_reason,omitempty"`
+	MaxRAMMB              float64 `json:"max_ram_mb,omitempty"`
+	AvgCPUPercent         float64 `json:"avg_cpu_percent,omitempty"`
+	TestFiles             int     `json:"test_files,omitempty"`
+	ModulesCompiled       int     `json:"modules_compiled,omitempty"`
+	BundleSize            string  `json:"bundle_size,omitempty"`
+	ArtifactSize          string  `json:"artifact_size,omitempty"`
+	OriginalBytes         int     `json:"original_bytes,omitempty"`
+	CompressedBytes       int     `json:"compressed_bytes,omitempty"`
+	SavingsPercentage     float64 `json:"savings_percentage,omitempty"`
 }

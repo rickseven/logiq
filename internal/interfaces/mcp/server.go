@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/rickseven/logiq/internal/app/compress"
 	"github.com/rickseven/logiq/internal/app/optimizer"
@@ -86,7 +85,7 @@ func (s *Server) handleRunCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), httpToolTimeout())
 	defer cancel()
 
 	appSvc := getAppService()
@@ -138,7 +137,7 @@ func (s *Server) handleRunTests(w http.ResponseWriter, r *http.Request) {
 		cmd = req.Framework
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), httpToolTimeout())
 	defer cancel()
 
 	appSvc := getAppService()
@@ -189,7 +188,7 @@ func (s *Server) handleBuildProject(w http.ResponseWriter, r *http.Request) {
 		cmd = req.BuildTool
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), httpToolTimeout())
 	defer cancel()
 
 	appSvc := getAppService()

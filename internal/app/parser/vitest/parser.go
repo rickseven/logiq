@@ -97,5 +97,12 @@ func (p *Parser) Summary() domain.Summary {
 }
 
 func (p *Parser) DetectFromContent(line string) bool {
-	return strings.Contains(line, "vitest") || strings.Contains(line, "Test Files") || strings.Contains(line, "PASS ") || strings.Contains(line, "FAIL ")
+	trimmed := strings.TrimSpace(line)
+	lower := strings.ToLower(trimmed)
+
+	if strings.Contains(lower, "vitest") {
+		return true
+	}
+
+	return strings.Contains(trimmed, "Test Files") || strings.Contains(trimmed, "Duration")
 }

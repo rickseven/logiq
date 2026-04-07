@@ -92,7 +92,14 @@ func (r *DefaultRunner) Run(ctx context.Context, cmdName string, args []string) 
 			// (e.g. "cd C:\path; Select-String ..." or "$env:VAR")
 			// Route through PowerShell instead of cmd.exe
 			psExe := getPowerShellExe()
-			fullCommand := buildPowerShellCommand(cmdName, args)
+			var fullCommand string
+			if len(args) == 0 && containsShellOperators(cmdName) {
+				// cmdName is the entire pipeline/chained expression (e.g. "Get-ChildItem . | Measure-Object").
+				// Pass it as-is to avoid quoting the shell operators inside it.
+				fullCommand = cmdName
+			} else {
+				fullCommand = buildPowerShellCommand(cmdName, args)
+			}
 			cmd = exec.CommandContext(ctx, psExe, "-NoProfile", "-NonInteractive", "-Command", fullCommand)
 		} else {
 			fullCommand := buildCmdCommand(cmdName, args)
@@ -215,6 +222,12 @@ func getPowerShellExe() string {
 
 func looksLikePowerShellCmdlet(cmdName string) bool {
 	return powershellCmdletPattern.MatchString(cmdName)
+}
+
+// containsShellOperators reports whether s contains shell pipeline or chaining operators.
+// Used to detect when cmdName is an entire pipeline expression rather than a bare command name.
+func containsShellOperators(s string) bool {
+	return strings.ContainsAny(s, "|;&<>")
 }
 
 // containsPowerShellSyntax checks if the full command (name + args) contains

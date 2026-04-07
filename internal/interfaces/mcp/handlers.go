@@ -8,7 +8,7 @@ import (
 	"regexp"
 	stdruntime "runtime"
 	"strings"
-	"time"
+	"unicode"
 
 	"github.com/rickseven/logiq/internal/app"
 	"github.com/rickseven/logiq/internal/domain"
@@ -16,6 +16,7 @@ import (
 )
 
 var shellControlPattern = regexp.MustCompile(`[\n\r;|><]|&&|\|\|`)
+var psControlPattern = regexp.MustCompile(`[;\n\r]`)
 var psCmdletPattern = regexp.MustCompile(`(?i)\b[A-Za-z][A-Za-z0-9]*-[A-Za-z][A-Za-z0-9]*\b`)
 var psSyntaxPattern = regexp.MustCompile(`(?i)\$env:|\$\{|\$\(|@\{|@\(|\$_\.|\s-(?:eq|ne|gt|lt|ge|le|like|notlike|match|notmatch|contains|in|notin|and|or|not)\s`)
 
@@ -24,6 +25,9 @@ func shouldRunAsRawShell(command string) bool {
 }
 
 func looksLikePowerShellCommand(command string) bool {
+	if psControlPattern.MatchString(command) {
+		return true
+	}
 	if psCmdletPattern.MatchString(command) {
 		return true
 	}
@@ -38,6 +42,57 @@ func resolvePowerShellExe() string {
 		return "pwsh"
 	}
 	return "powershell"
+}
+
+func splitCommandLine(command string) []string {
+	runes := []rune(command)
+	parts := make([]string, 0, 8)
+	var current strings.Builder
+	inQuote := rune(0)
+
+	flush := func() {
+		if current.Len() == 0 {
+			return
+		}
+		parts = append(parts, current.String())
+		current.Reset()
+	}
+
+	for i := 0; i < len(runes); i++ {
+		ch := runes[i]
+
+		if inQuote != 0 {
+			if ch == inQuote {
+				inQuote = 0
+				continue
+			}
+			if ch == '\\' && inQuote == '"' && i+1 < len(runes) {
+				next := runes[i+1]
+				if next == '"' || next == '\\' {
+					current.WriteRune(next)
+					i++
+					continue
+				}
+			}
+			current.WriteRune(ch)
+			continue
+		}
+
+		if ch == '"' || ch == '\'' {
+			inQuote = ch
+			continue
+		}
+
+		if unicode.IsSpace(ch) {
+			flush()
+			continue
+		}
+
+		current.WriteRune(ch)
+	}
+
+	flush()
+	return parts
 }
 
 // parseCommandForExecution preserves complex shell syntax on Windows by routing
@@ -57,7 +112,7 @@ func parseCommandForExecution(command string) (string, []string) {
 		return "cmd", []string{"/C", trimmed}
 	}
 
-	parts := strings.Fields(trimmed)
+	parts := splitCommandLine(trimmed)
 	if len(parts) == 0 {
 		return "", nil
 	}
@@ -87,7 +142,7 @@ func (s *Server) handleRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), httpToolTimeout())
 	defer cancel()
 
 	defer func() {

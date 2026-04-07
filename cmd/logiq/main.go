@@ -30,14 +30,31 @@ func main() {
 	saveArtifacts := flag.Bool("save-artifacts", false, "Save output as structured artifact")
 	timeout := flag.Int("timeout", cfg.Timeout, "Timeout in seconds")
 	debug := flag.Bool("debug", cfg.Debug, "Enable debug mode")
+	version := flag.Bool("version", false, "Print version and exit")
+	versionShort := flag.Bool("v", false, "Print version and exit")
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: logiq run <command> [args...]\n")
+		fmt.Fprintln(os.Stderr, "Usage:")
+		fmt.Fprintln(os.Stderr, "  logiq run <command> [args...]")
+		fmt.Fprintln(os.Stderr, "  logiq analyze <logs>")
+		fmt.Fprintln(os.Stderr, "  logiq explain <command>")
+		fmt.Fprintln(os.Stderr, "  logiq doctor")
+		fmt.Fprintln(os.Stderr, "  logiq trace")
+		fmt.Fprintln(os.Stderr, "  logiq plugins")
+		fmt.Fprintln(os.Stderr, "  logiq mcp")
+		fmt.Fprintln(os.Stderr, "  logiq version | logiq --version | logiq -v")
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(os.Stderr, "Flags:")
 		flag.PrintDefaults()
 	}
 
 	flag.Parse()
 	args := flag.Args()
+
+	if *version || *versionShort {
+		fmt.Printf("LogIQ version %s\n", domain.GetVersion())
+		return
+	}
 
 	if len(args) < 1 {
 		flag.Usage()

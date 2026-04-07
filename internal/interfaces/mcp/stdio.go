@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/rickseven/logiq/internal/domain"
 )
@@ -195,7 +194,7 @@ func (s *StdioServer) runCommandTool(id interface{}, cmdLine string) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), stdioToolTimeout())
 	defer cancel()
 
 	appSvc := getAppService()

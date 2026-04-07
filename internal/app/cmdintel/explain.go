@@ -38,6 +38,7 @@ func explainSingle(cmdStr string) domain.ExplainResult {
 	}
 
 	lower := strings.ToLower(cmdStr)
+	fields := strings.Fields(cmdStr)
 
 	// 1. High-priority specific tools
 	if strings.Contains(lower, "vitest") {
@@ -76,20 +77,105 @@ func explainSingle(cmdStr string) domain.ExplainResult {
 		result.Description = "Installs project dependencies defined in package.json."
 
 		// 3. Other frameworks
-	} else if strings.Contains(lower, "flutter build") {
-		result.Type = "build"
-		result.Tool = "flutter"
-		result.Description = "Builds the Flutter application for the target platform."
-	} else if strings.Contains(lower, "flutter test") {
-		result.Type = "test"
-		result.Tool = "flutter"
-		result.Description = "Runs unit or widget tests for the Flutter project."
+	} else if strings.HasPrefix(lower, "flutter ") {
+		return explainFlutterCommand(cmdStr, fields)
 
 		// 4. VCS
 	} else if strings.HasPrefix(lower, "git ") {
 		result.Type = "vcs"
 		result.Tool = "git"
 		result.Description = "A version control command to manage source code history."
+	}
+
+	return result
+}
+
+func explainFlutterCommand(cmdStr string, fields []string) domain.ExplainResult {
+	result := domain.ExplainResult{
+		Command: cmdStr,
+		Type:    "flutter",
+		Tool:    "flutter",
+	}
+
+	if len(fields) < 2 {
+		result.Description = "Runs a Flutter CLI command."
+		return result
+	}
+
+	subcmd := strings.ToLower(fields[1])
+	args := fields[2:]
+	joined := " " + strings.ToLower(strings.Join(args, " ")) + " "
+
+	findValue := func(flag string) string {
+		for i := 0; i < len(args)-1; i++ {
+			if strings.EqualFold(args[i], flag) {
+				return args[i+1]
+			}
+		}
+		return ""
+	}
+
+	mode := ""
+	if strings.Contains(joined, " --debug ") {
+		mode = "debug"
+	} else if strings.Contains(joined, " --profile ") {
+		mode = "profile"
+	} else if strings.Contains(joined, " --release ") {
+		mode = "release"
+	}
+
+	verbose := strings.Contains(joined, " -v ") || strings.Contains(joined, " --verbose ")
+	flavor := findValue("--flavor")
+	target := findValue("-t")
+	if target == "" {
+		target = findValue("--target")
+	}
+
+	details := make([]string, 0, 5)
+	if mode != "" {
+		details = append(details, "mode "+mode)
+	}
+	if flavor != "" {
+		details = append(details, "flavor "+flavor)
+	}
+	if target != "" {
+		details = append(details, "entrypoint "+target)
+	}
+	if strings.Contains(joined, " --dart-define") {
+		details = append(details, "custom runtime defines")
+	}
+	if verbose {
+		details = append(details, "verbose logs")
+	}
+
+	suffix := ""
+	if len(details) > 0 {
+		suffix = " with " + strings.Join(details, ", ")
+	}
+
+	switch subcmd {
+	case "build":
+		platform := "target platform"
+		if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+			platform = args[0]
+		}
+		result.Type = "build"
+		result.Description = "Builds the Flutter app for " + platform + suffix + "."
+	case "test":
+		result.Type = "test"
+		result.Description = "Runs Flutter tests" + suffix + "."
+	case "run":
+		result.Type = "run"
+		result.Description = "Builds and launches the Flutter app on a connected device/emulator" + suffix + "."
+	case "analyze":
+		result.Type = "lint"
+		result.Description = "Runs static analysis on Flutter/Dart source code to detect issues before build/runtime." + suffix
+	case "pub":
+		result.Type = "dependency"
+		result.Description = "Runs Flutter pub package management command" + suffix + "."
+	default:
+		result.Type = "flutter"
+		result.Description = "Runs Flutter command '" + subcmd + "'" + suffix + "."
 	}
 
 	return result

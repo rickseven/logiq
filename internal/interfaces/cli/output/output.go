@@ -1,4 +1,4 @@
-﻿package output
+package output
 
 import (
 	"encoding/json"
@@ -59,6 +59,9 @@ func Print(mode string, out domain.StructuredOutput) {
 
 		if out.Metrics.DurationSeconds > 0 {
 			fmt.Printf("\n⏱️  Duration: %.2fs\n", out.Metrics.DurationSeconds)
+		}
+		if out.Metrics.FastModeActive {
+			fmt.Printf("⚡ Fast Mode: %s (analysis window: %d lines, trigger: %d lines)\n", out.Metrics.FastModeKind, out.Metrics.FastAnalysisLines, out.Metrics.FastModeTriggerLines)
 		}
 		if out.Metrics.TestsPassed > 0 || out.Metrics.TestsFailed > 0 {
 			fmt.Printf("   Passed: %d, Failed: %d\n", out.Metrics.TestsPassed, out.Metrics.TestsFailed)

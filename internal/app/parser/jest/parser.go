@@ -28,6 +28,7 @@ func (p *Parser) Detect(cmd string, args []string) bool {
 }
 
 var testSummaryRegex = regexp.MustCompile(`Tests:\s+(\d+) failed,\s+(\d+) passed,\s+(\d+) total`)
+var jestFileResultRegex = regexp.MustCompile(`^(PASS|FAIL)\s+.+\.(test|spec)\.[jt]sx?$`)
 
 func (p *Parser) Parse(line string) {
 	if strings.Contains(line, " FAIL ") {
@@ -60,5 +61,15 @@ func (p *Parser) Summary() domain.Summary {
 }
 
 func (p *Parser) DetectFromContent(line string) bool {
-	return strings.Contains(line, "jest") || strings.Contains(line, "FAIL") || strings.Contains(line, "PASS") || strings.Contains(line, "Test Suites:")
+	trimmed := strings.TrimSpace(line)
+	lower := strings.ToLower(trimmed)
+
+	if strings.Contains(lower, "jest") {
+		return true
+	}
+	if strings.Contains(trimmed, "Test Suites:") || strings.Contains(lower, "ran all test suites") {
+		return true
+	}
+
+	return jestFileResultRegex.MatchString(trimmed)
 }

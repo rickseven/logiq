@@ -35,6 +35,23 @@ var patterns = []ErrorPattern{
 		Priority:  1,
 		Formatter: func(match []string) string { return "Build failed: " + strings.TrimSpace(match[1]) },
 	},
+	// PowerShell / shell command-not-found errors
+	{
+		Regex:     regexp.MustCompile(`(?i)The term '([^']+)' is not recognized`),
+		ErrorType: "command_not_found",
+		Priority:  1,
+		Formatter: func(match []string) string {
+			return "Command '" + match[1] + "' not found. Ensure it is installed and available in PATH."
+		},
+	},
+	{
+		Regex:     regexp.MustCompile(`(?i)([A-Za-z][A-Za-z0-9_-]*)(?:\.exe)?: [Cc]ommand not found`),
+		ErrorType: "command_not_found",
+		Priority:  1,
+		Formatter: func(match []string) string {
+			return "Command '" + match[1] + "' not found. Ensure it is installed and available in PATH."
+		},
+	},
 
 	// Priority 2: Exceptions and panics
 	{

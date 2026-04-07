@@ -1,7 +1,8 @@
-﻿package app
+package app
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/rickseven/logiq/internal/app/pipeline"
 
 	"github.com/rickseven/logiq/internal/domain"
+	"github.com/rickseven/logiq/internal/infrastructure/config"
 	"github.com/rickseven/logiq/internal/infrastructure/observability/logger"
 	"github.com/rickseven/logiq/internal/infrastructure/observability/metrics"
 )
@@ -29,6 +31,98 @@ type RuntimeEngine interface {
 // It bridges user interfaces (CLI/MCP) with the execution/analysis pipeline.
 type Service struct {
 	runner RuntimeEngine
+}
+
+type executionTuning struct {
+	MaxLogLines       int
+	FastMode          bool
+	FastAnalysisLines int
+	AutoFastMode      bool
+	AutoFastTrigger   int
+}
+
+type fastModeState struct {
+	Triggered     bool
+	Kind          string
+	TriggerReason string
+}
+
+func resolveExecutionTuning() executionTuning {
+	cfg := config.LoadConfig()
+
+	maxLogLines := cfg.MaxLogLines
+	if maxLogLines <= 0 {
+		maxLogLines = 10000
+	}
+
+	fastAnalysisLines := cfg.FastAnalysisLines
+	if fastAnalysisLines <= 0 {
+		fastAnalysisLines = 2500
+	}
+
+	if fastAnalysisLines > maxLogLines {
+		fastAnalysisLines = maxLogLines
+	}
+
+	autoFastTrigger := cfg.AutoFastTrigger
+	if autoFastTrigger <= 0 {
+		autoFastTrigger = 6000
+	}
+
+	if autoFastTrigger > maxLogLines {
+		autoFastTrigger = maxLogLines
+	}
+
+	return executionTuning{
+		MaxLogLines:       maxLogLines,
+		FastMode:          cfg.FastMode,
+		FastAnalysisLines: fastAnalysisLines,
+		AutoFastMode:      cfg.AutoFastMode,
+		AutoFastTrigger:   autoFastTrigger,
+	}
+}
+
+func tailWindow(logs []string, size int) []string {
+	if size <= 0 || len(logs) <= size {
+		return logs
+	}
+	return logs[len(logs)-size:]
+}
+
+func fastModeMessage(mode string, lines int) string {
+	return fmt.Sprintf("[LOGIQ] fast mode active (%s): deep analysis limited to last %d lines", mode, lines)
+}
+
+func resolveFastModeState(tuning executionTuning, keptLogLines int) fastModeState {
+	manualFastTriggered := tuning.FastMode && keptLogLines > tuning.FastAnalysisLines
+	autoFastTriggered := tuning.AutoFastMode && !tuning.FastMode && keptLogLines > tuning.AutoFastTrigger
+
+	state := fastModeState{}
+	if manualFastTriggered {
+		state.Triggered = true
+		state.Kind = "manual"
+		state.TriggerReason = "manual_override"
+		return state
+	}
+
+	if autoFastTriggered {
+		state.Triggered = true
+		state.Kind = "auto"
+		state.TriggerReason = "auto_threshold"
+	}
+
+	return state
+}
+
+func applyFastModeMetrics(m *domain.Metrics, tuning executionTuning, state fastModeState) {
+	m.FastModeActive = state.Triggered
+	m.FastModeTriggerLines = tuning.AutoFastTrigger
+
+	if state.Triggered {
+		m.FastModeKind = state.Kind
+		m.FastAnalysisLines = tuning.FastAnalysisLines
+		m.FastModeTriggerReason = state.TriggerReason
+	}
 }
 
 // NewService provisions the core application orchestrator.
@@ -77,6 +171,9 @@ func (s *Service) ExecuteCommand(ctx context.Context, cmd string, args []string,
 	logProcessor := pipeline.NewProcessor()
 	var rawLogs []string
 	var sampleLogs []string
+	tuning := resolveExecutionTuning()
+	maxLogLines := tuning.MaxLogLines
+	omittedLines := 0
 
 	// Listen to stream with heartbeat
 	lastHeartbeat := time.Now()
@@ -92,11 +189,28 @@ func (s *Service) ExecuteCommand(ctx context.Context, cmd string, args []string,
 
 		cleanLine, keep := logProcessor.Process(rawLine)
 		if keep {
-			rawLogs = append(rawLogs, cleanLine)
-			if len(sampleLogs) < 10 {
-				sampleLogs = append(sampleLogs, cleanLine)
+			if len(rawLogs) < maxLogLines {
+				rawLogs = append(rawLogs, cleanLine)
+				if len(sampleLogs) < 10 {
+					sampleLogs = append(sampleLogs, cleanLine)
+				}
+			} else {
+				omittedLines++
 			}
 		}
+	}
+
+	if omittedLines > 0 {
+		rawLogs = append(rawLogs, fmt.Sprintf("[LOGIQ] omitted %d log lines after LOGIQ_MAX_LOG_LINES limit", omittedLines))
+	}
+
+	analysisLogs := rawLogs
+	fastState := resolveFastModeState(tuning, len(rawLogs))
+	fastModeTriggered := fastState.Triggered
+	fastModeKind := fastState.Kind
+	if fastModeTriggered {
+		analysisLogs = tailWindow(rawLogs, tuning.FastAnalysisLines)
+		analysisLogs = append(analysisLogs, fastModeMessage(fastModeKind, tuning.FastAnalysisLines))
 	}
 
 	exitCode := <-exitChan
@@ -112,22 +226,27 @@ func (s *Service) ExecuteCommand(ctx context.Context, cmd string, args []string,
 
 	// 2. Parser sees raw logs for accurate metrics and error detection
 	startParser := time.Now()
-	for _, rawLine := range rawLogs {
+	for _, rawLine := range analysisLogs {
 		parserPlugin.Parse(rawLine)
 	}
 	metrics.RecordParserExecutionTime(time.Since(startParser))
 
 	// 3. Compress and Optimize for AI consumption and context
-	compressedLogs := compress.Compress(rawLogs)
+	compressedLogs := compress.Compress(analysisLogs)
 	opt := optimizer.NewOptimizer()
 	optimizedLogs := opt.Optimize(compressedLogs)
 
 	summary := parserPlugin.Summary()
 	summary.Metrics.DurationSeconds = totalDuration.Seconds()
+	applyFastModeMetrics(&summary.Metrics, tuning, fastState)
 	summary.Metrics.MaxRAMMB = resMetrics.MaxRAMMB
 	summary.Metrics.AvgCPUPercent = resMetrics.AvgCPUPercent
 
-	artifactPath := cmdintel.SaveArtifact(executionID, rawLogs)
+	artifactLogs := rawLogs
+	if fastModeTriggered {
+		artifactLogs = analysisLogs
+	}
+	artifactPath := cmdintel.SaveArtifact(executionID, artifactLogs)
 
 	// Status Logic: exit code based OR parser detected failure
 	if exitCode != 0 || summary.Status == "failure" {
@@ -140,12 +259,16 @@ func (s *Service) ExecuteCommand(ctx context.Context, cmd string, args []string,
 		}
 		summary.Status = "failure"
 
-		changedFiles := cmdintel.GetChangedFiles()
-		intel := errorintel.Analyze(optimizedLogs, changedFiles)
-		if intel != nil {
-			summary.ErrorIntel = intel
-			summary.SummaryText += "\n\nRoot cause:\n" + intel.RootCause
-			summary.Suggestions = debugassist.Analyze(intel)
+		if fastModeTriggered {
+			summary.SummaryText += "\n\nFast mode active (" + fastModeKind + "): deep error intelligence skipped. Set LOGIQ_FAST_MODE=0 for full root-cause analysis."
+		} else {
+			changedFiles := cmdintel.GetChangedFiles()
+			intel := errorintel.Analyze(optimizedLogs, changedFiles)
+			if intel != nil {
+				summary.ErrorIntel = intel
+				summary.SummaryText += "\n\nRoot cause:\n" + intel.RootCause
+				summary.Suggestions = debugassist.Analyze(intel)
+			}
 		}
 	}
 
